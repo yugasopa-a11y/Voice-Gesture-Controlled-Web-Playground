@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gesture Playground</title>
+  
+  <!-- MediaPipe Hands CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #050510 0%, #0a0a20 50%, #0f0520 100%);
+      min-height: 100vh;
+      overflow: hidden;
+      color: #e0e0e0;
+    }
+    
+    #playground {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      overflow: hidden;
+    }
+    
+    /* Particle Canvas */
+    #particle-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 2;
+    }
+    
+    /* Draw Canvas */
+    #draw-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 3;
+    }
+    
+    /* Objects */
+    .playground-object {
+      position: absolute;
+      cursor: pointer;
+      transition: box-shadow 0.2s, transform 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      color: rgba(255,255,255,0.9);
+      user-select: none;
+      z-index: 10;
+    }
+    
+    .playground-object:hover { transform: scale(1.05); }
+    
+    .playground-object.selected {
+      box-shadow: 0 0 0 4px #00ffff, 0 0 50px rgba(0, 255, 255, 0.4);
+      z-index: 1000;
+    }
+    
+    .playground-object.box { border-radius: 12px; }
+    .playground-object.circle { border-radius: 50%; }
+    
+    /* Toolbar */
+    #toolbar {
+      position: fixed;
+      top: 20px; left: 20px;
+      background: rgba(10, 10, 30, 0.95);
+      border: 2px solid rgba(0, 255, 255, 0.25);
+      border-radius: 20px;
+      padding: 18px;
+      z-index: 100;
+      backdrop-filter: blur(15px);
+      width: 210px;
+    }
+    
+    #toolbar h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: #00ffff;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    
+    .toolbar-section {
+      margin-bottom: 14px;
+    }
+    
+    .toolbar-section h3 {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    
+    .btn {
+      padding: 8px 12px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex: 1;
+      text-align: center;
+    }
+    
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+      transform: translateY(-1px);
+    }
+    
+    .btn.active {
+      background: rgba(0, 255, 255, 0.3);
+      border-color: #00ffff;
+      color: #00ffff;
+    }
+    
+    .btn.mode-btn { font-size: 11px; }
+    
+    .btn.particle { background: rgba(255, 100, 200, 0.2); border-color: rgba(255, 100, 200, 0.4); }
+    .btn.particle:hover, .btn.particle.active { background: rgba(255, 100, 200, 0.4); border-color: #ff64c8; color: #ff64c8; }
+    
+    .btn.game { background: rgba(255, 200, 50, 0.2); border-color: rgba(255, 200, 50, 0.4); }
+    .btn.game:hover, .btn.game.active { background: rgba(255, 200, 50, 0.4); border-color: #ffc832; color: #ffc832; }
+    
+    .btn.draw { background: rgba(150, 100, 255, 0.2); border-color: rgba(150, 100, 255, 0.4); }
+    .btn.draw:hover, .btn.draw.active { background: rgba(150, 100, 255, 0.4); border-color: #9664ff; color: #9664ff; }
+    
+    .btn.danger { background: rgba(255, 70, 70, 0.2); border-color: rgba(255, 70, 70, 0.3); }
+    .btn.danger:hover { background: rgba(255, 70, 70, 0.35); }
+    
+    /* Color Picker */
+    .color-row {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    
+    .color-btn {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .color-btn:hover { transform: scale(1.2); }
+    .color-btn.active { border-color: #fff; box-shadow: 0 0 10px currentColor; }
+    
+    /* Mode indicator */
+    #mode-indicator {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10, 10, 30, 0.95);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 30px;
+      padding: 12px 30px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 100;
+      text-align: center;
+      backdrop-filter: blur(10px);
+    }
+    
+    #mode-indicator.particle { border-color: #ff64c8; color: #ff64c8; }
+    #mode-indicator.game { border-color: #ffc832; color: #ffc832; }
+    #mode-indicator.draw { border-color: #9664ff; color: #9664ff; }
+    #mode-indicator.objects { border-color: #00ffff; color: #00ffff; }
+    
+    /* Gesture Panel */
+    #gesture-panel {
+      position: fixed;
+      top: 20px; right: 20px;
+      background: rgba(10, 10, 30, 0.95);
+      border: 2px solid rgba(255, 100, 255, 0.25);
+      border-radius: 16px;
+      padding: 16px;
+      min-width: 180px;
+      backdrop-filter: blur(15px);
+      z-index: 100;
+    }
+    
+    #gesture-panel h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #ff66ff;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    
+    #gesture-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      padding: 8px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    
+    #gesture-status .indicator {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #444;
+      transition: all 0.3s;
+    }
+    
+    #gesture-status.active .indicator { background: #00ff00; box-shadow: 0 0 12px #00ff00; }
+    #gesture-status.pinching .indicator { background: #ff6600; box-shadow: 0 0 12px #ff6600; }
+    #gesture-status.spread .indicator { background: #ff64c8; box-shadow: 0 0 12px #ff64c8; }
+    
+    #gesture-text { color: #888; font-size: 12px; }
+    #gesture-status.active #gesture-text { color: #00ff00; }
+    #gesture-status.pinching #gesture-text { color: #ff6600; }
+    #gesture-status.spread #gesture-text { color: #ff64c8; }
+    
+    #hand-spread {
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+      margin-top: 6px;
+    }
+    
+    /* Game Panel */
+    #game-panel {
+      position: fixed;
+      top: 120px; right: 20px;
+      background: rgba(10, 10, 30, 0.95);
+      border: 2px solid rgba(255, 200, 50, 0.3);
+      border-radius: 16px;
+      padding: 16px;
+      min-width: 180px;
+      backdrop-filter: blur(15px);
+      z-index: 100;
+      display: none;
+    }
+    
+    #game-panel.visible { display: block; }
+    
+    #game-panel h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #ffc832;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    
+    .game-stat {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      font-size: 13px;
+    }
+    
+    .game-stat:last-child { border: none; }
+    .game-stat .label { color: #888; }
+    .game-stat .value { color: #ffc832; font-weight: 600; }
+    
+    /* Game Target */
+    .game-target {
+      position: absolute;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+      transition: transform 0.1s;
+      z-index: 50;
+      animation: targetPulse 1s infinite;
+    }
+    
+    @keyframes targetPulse {
+      0%, 100% { box-shadow: 0 0 20px currentColor; }
+      50% { box-shadow: 0 0 40px currentColor, 0 0 60px currentColor; }
+    }
+    
+    .game-target.hit {
+      animation: targetHit 0.3s forwards;
+    }
+    
+    @keyframes targetHit {
+      0% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+    
+    /* Object Count */
+    #object-count {
+      position: fixed;
+      bottom: 20px; left: 20px;
+      background: rgba(10, 10, 30, 0.95);
+      border: 2px solid rgba(100, 255, 100, 0.25);
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #88ff88;
+      z-index: 100;
+    }
+    
+    /* Webcam */
+    #webcam-container {
+      position: fixed;
+      bottom: 20px; right: 20px;
+      width: 260px; height: 195px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 2px solid rgba(0, 255, 255, 0.3);
+      background: #000;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      z-index: 100;
+    }
+    
+    #webcam {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    
+    #canvas-overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      transform: scaleX(-1);
+      pointer-events: none;
+    }
+    
+    #webcam-label {
+      position: absolute;
+      top: 8px; left: 8px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 4px 10px;
+      border-radius: 15px;
+      font-size: 10px;
+      color: #00ffff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    #webcam-label .dot {
+      width: 6px; height: 6px;
+      background: #00ff00;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    
+    /* Finger Cursor */
+    #finger-cursor {
+      position: fixed;
+      width: 20px; height: 20px;
+      border: 3px solid #00ffff;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9998;
+      transform: translate(-50%, -50%);
+      display: none;
+      box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+      transition: all 0.08s;
+    }
+    
+    #finger-cursor.active { display: block; }
+    #finger-cursor.pinching {
+      background: rgba(255, 100, 0, 0.5);
+      border-color: #ff6600;
+      width: 30px; height: 30px;
+    }
+    #finger-cursor.spread {
+      border-color: #ff64c8;
+      width: 50px; height: 50px;
+      background: rgba(255, 100, 200, 0.2);
+    }
+    
+    /* Permission Overlay */
+    #permission-overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.98);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      text-align: center;
+      padding: 40px;
+    }
+    
+    #permission-overlay.hidden { display: none; }
+    
+    #permission-overlay h1 {
+      font-size: 42px;
+      background: linear-gradient(135deg, #00ffff, #ff66ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+    
+    #permission-overlay p {
+      font-size: 18px;
+      color: #888;
+      max-width: 500px;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+    
+    #permission-overlay .features {
+      display: flex;
+      gap: 30px;
+      margin: 30px 0;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    
+    #permission-overlay .feature {
+      text-align: center;
+    }
+    
+    #permission-overlay .feature .icon {
+      font-size: 40px;
+      margin-bottom: 8px;
+    }
+    
+    #permission-overlay .feature .label {
+      font-size: 12px;
+      color: #666;
+    }
+    
+    #permission-overlay button {
+      margin-top: 20px;
+      padding: 18px 60px;
+      font-size: 18px;
+      background: linear-gradient(135deg, #00aaff, #ff66ff);
+      border: none;
+      border-radius: 30px;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    #permission-overlay button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 50px rgba(255, 100, 255, 0.4);
+    }
+    
+    /* Loading */
+    #loading {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      z-index: 50;
+    }
+    
+    #loading.hidden { display: none; }
+    
+    .spinner {
+      width: 50px; height: 50px;
+      border: 4px solid rgba(0, 255, 255, 0.2);
+      border-top-color: #00ffff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    #loading p { color: #00ffff; font-size: 14px; }
+    
+    /* Instructions */
+    #instructions {
+      position: fixed;
+      bottom: 70px; left: 20px;
+      background: rgba(10, 10, 30, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 11px;
+      color: #555;
+      z-index: 99;
+      max-width: 200px;
+      line-height: 1.5;
+    }
+    
+    #instructions strong { color: #00ffff; }
+    #instructions .pink { color: #ff64c8; }
+    #instructions .yellow { color: #ffc832; }
+  </style>
+  <script data-arena-recording="true">(function(){
+"use strict";
+var SK="__arena_rec",RRWEB_CDN="https://cdn.jsdelivr.net/npm/rrweb@2.0.0-alpha.4/dist/rrweb.min.js";
+var MAX_RECORDING_MS=600000,MAX_RRWEB_EVENTS=30000,MAX_INTERACTIONS=5000,MAX_CURSOR_POINTS=10000,recStopped=false;
+var stored=null;try{var raw=sessionStorage.getItem(SK);if(raw)stored=JSON.parse(raw);}catch(ex){}
+var meta=stored?stored.m||null:null,rrwebEvents=stored?stored.r||[]:[],rrwebStarted=false,startTime=stored?stored.st||Date.now():Date.now();
+var interactions=stored?stored.i||[]:[],cursorPath=stored?stored.c||[]:[],lastCursorSample=0,lastScrollSample=0;
+var pageHeight=document.documentElement.scrollHeight;
+var viewport={width:window.innerWidth,height:window.innerHeight};
+function isCapped(){if(recStopped)return true;if(Date.now()-startTime>=MAX_RECORDING_MS){recStopped=true;return true;}return false;}
+function persist(){try{var d=JSON.stringify({r:rrwebEvents,i:interactions,c:cursorPath,m:meta,st:startTime});sessionStorage.setItem(SK,d);}catch(ex){rrwebEvents=rrwebEvents.slice(Math.floor(rrwebEvents.length/2));try{sessionStorage.setItem(SK,JSON.stringify({r:rrwebEvents,i:interactions,c:cursorPath,m:meta,st:startTime}));}catch(ex2){}}}
+setInterval(persist,5000);
+window.addEventListener("resize",function(){viewport={width:window.innerWidth,height:window.innerHeight};pageHeight=document.documentElement.scrollHeight;});
+document.addEventListener("click",function(e){if(isCapped()||interactions.length>=MAX_INTERACTIONS)return;var el=e.target;var tag=el.tagName?el.tagName.toLowerCase():"";var text=(el.textContent||"").trim().substring(0,80);var classes=el.className&&typeof el.className==="string"?el.className.substring(0,120):"";interactions.push({type:"click",t:Date.now()-startTime,x:Math.round(e.clientX),y:Math.round(e.clientY),element:{tag:tag,text:text,classes:classes}});},true);
+window.addEventListener("scroll",function(){if(isCapped()||interactions.length>=MAX_INTERACTIONS)return;var now=Date.now();if(now-lastScrollSample<200)return;lastScrollSample=now;var scrollY=Math.round(window.scrollY||window.pageYOffset||0);var depthPct=pageHeight>viewport.height?Math.min(100,Math.round(((scrollY+viewport.height)/pageHeight)*100)):100;interactions.push({type:"scroll",t:now-startTime,y:scrollY,depth_pct:depthPct});},{passive:true});
+document.addEventListener("mousemove",function(e){if(isCapped()||cursorPath.length>=MAX_CURSOR_POINTS)return;var now=Date.now();if(now-lastCursorSample<250)return;lastCursorSample=now;cursorPath.push([Math.round(e.clientX),Math.round(e.clientY),now-startTime]);},{passive:true});
+document.addEventListener("keydown",function(e){if(isCapped()||interactions.length>=MAX_INTERACTIONS)return;if(e.target&&(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"))return;interactions.push({type:"keydown",t:Date.now()-startTime,key:e.key});},true);
+function buildAnalytics(){if(!meta)return null;var ph=document.documentElement.scrollHeight;var maxScroll=0,clickElements={},firstClick=null,firstScroll=null,totalDistance=0;for(var i=0;i<interactions.length;i++){var ev=interactions[i];if(ev.type==="scroll"){if(ev.depth_pct>maxScroll)maxScroll=ev.depth_pct;if(!firstScroll)firstScroll=ev.t;}if(ev.type==="click"){if(!firstClick)firstClick=ev.t;var key=ev.element.tag+":"+ev.element.text.substring(0,30);clickElements[key]=true;}}for(var j=1;j<cursorPath.length;j++){var dx=cursorPath[j][0]-cursorPath[j-1][0];var dy=cursorPath[j][1]-cursorPath[j-1][1];totalDistance+=Math.sqrt(dx*dx+dy*dy);}var duration=Date.now()-startTime;var clickHeatmap=[];for(var k=0;k<interactions.length;k++){if(interactions[k].type==="click")clickHeatmap.push([interactions[k].x,interactions[k].y]);}return{generation_id:meta.generationId,tournament_id:meta.tournamentId,started_at:new Date(startTime).toISOString(),ended_at:new Date().toISOString(),duration_ms:duration,viewport:viewport,page_height:ph,interactions:interactions,cursor_path:cursorPath,click_heatmap:clickHeatmap,summary:{total_clicks:clickHeatmap.length,total_scrolls:interactions.filter(function(e){return e.type==="scroll";}).length,max_scroll_depth_pct:maxScroll,unique_elements_clicked:Object.keys(clickElements).length,time_to_first_click_ms:firstClick,time_to_first_scroll_ms:firstScroll,cursor_distance_px:Math.round(totalDistance),active_time_ms:duration}};}
+function loadRrweb(){if(rrwebStarted)return;rrwebStarted=true;var s=document.createElement("script");s.src=RRWEB_CDN;s.onload=function(){var rec=(window.rrweb&&window.rrweb.record)||window.rrwebRecord;if(!rec)return;rec({emit:function(event){if(rrwebEvents.length>=MAX_RRWEB_EVENTS||isCapped())return;rrwebEvents.push(event);}});};s.onerror=function(){};document.head.appendChild(s);}
+window.addEventListener("message",function(e){if(!e.data||typeof e.data.type!=="string")return;if(e.data.type==="arena:init"){if(!meta)startTime=Date.now();meta={generationId:e.data.generationId||e.data.modelId,tournamentId:e.data.tournamentId};persist();loadRrweb();if(e.source)e.source.postMessage({type:"arena:init-ack",generationId:meta.generationId},"*");}if(e.data.type==="arena:flush"){var resp={type:"arena:recording-data",generationId:meta?meta.generationId:null,rrwebEvents:rrwebEvents,analytics:buildAnalytics()};try{sessionStorage.removeItem(SK);}catch(ex){}if(e.source)e.source.postMessage(resp,"*");}});
+loadRrweb();
+})();</script>
+  <script data-arena-views="true">(function(){var isTop=false;try{isTop=window.self===window.top;}catch(e){}if(!isTop)return;window.__ARENA_META={generationId:"claude-opus-4-5-20251101",tournamentId:"d68a6885-2f86-4736-ab7f-ab96c0eefa06"};var payload={tournamentId:"d68a6885-2f86-4736-ab7f-ab96c0eefa06",modelId:"claude-opus-4-5-20251101"};try{var r=document.referrer;if(r){var u=new URL(r);payload.referrerDomain=u.hostname;}}catch(e){}try{var vid=null;try{vid=localStorage.getItem('arena_vid');}catch(e){}if(!vid){vid=typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID():(Date.now().toString(36)+Math.random().toString(36).slice(2)).slice(0,32);try{localStorage.setItem('arena_vid',vid);}catch(e){}}if(vid)payload.viewerId=vid;}catch(e){}try{fetch("https://www.designarena.ai/api/agon/page-views",{"method":"POST","headers":{"Content-Type":"application/json"},"body":JSON.stringify(payload),"keepalive":true});}catch(e){}})();</script>
+</head>
+<body>
+  <!-- Permission Overlay -->
+  <div id="permission-overlay">
+    <h1>✨ Gesture Playground</h1>
+    <p>Control particles, create shapes, play games - all with your hands!</p>
+    
+    <div class="features">
+      <div class="feature">
+        <div class="icon">🎨</div>
+        <div class="label">Create & Draw</div>
+      </div>
+      <div class="feature">
+        <div class="icon">✨</div>
+        <div class="label">Particle Magic</div>
+      </div>
+      <div class="feature">
+        <div class="icon">🎮</div>
+        <div class="label">Hand Games</div>
+      </div>
+      <div class="feature">
+        <div class="icon">✋</div>
+        <div class="label">Gesture Control</div>
+      </div>
+    </div>
+    
+    <button onclick="requestPermissions()">Start Experience</button>
+  </div>
+  
+  <!-- Loading -->
+  <div id="loading" class="hidden">
+    <div class="spinner"></div>
+    <p>Loading hand tracking...</p>
+  </div>
+  
+  <!-- Playground -->
+  <div id="playground"></div>
+  
+  <!-- Particle Canvas -->
+  <canvas id="particle-canvas"></canvas>
+  
+  <!-- Draw Canvas -->
+  <canvas id="draw-canvas"></canvas>
+  
+  <!-- Finger Cursor -->
+  <div id="finger-cursor"></div>
+  
+  <!-- Mode Indicator -->
+  <div id="mode-indicator" class="objects">🎯 Object Mode</div>
+  
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <h2>🎮 Controls</h2>
+    
+    <div class="toolbar-section">
+      <h3>Mode</h3>
+      <div class="btn-row">
+        <button class="btn mode-btn active" id="mode-objects" onclick="setMode('objects')">🎯 Objects</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn mode-btn particle" id="mode-particle" onclick="setMode('particle')">✨ Particles</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn mode-btn draw" id="mode-draw" onclick="setMode('draw')">✏️ Draw</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn mode-btn game" id="mode-game" onclick="setMode('game')">🎮 Game</button>
+      </div>
+    </div>
+    
+    <div class="toolbar-section">
+      <h3>Create</h3>
+      <div class="btn-row">
+        <button class="btn" onclick="createObject('box')">📦</button>
+        <button class="btn" onclick="createObject('circle')">⭕</button>
+        <button class="btn" onclick="resizeSelected(1.3)">➕</button>
+        <button class="btn" onclick="resizeSelected(0.7)">➖</button>
+      </div>
+    </div>
+    
+    <div class="toolbar-section">
+      <h3>Colors</h3>
+      <div class="color-row" id="color-picker"></div>
+    </div>
+    
+    <div class="toolbar-section">
+      <div class="btn-row">
+        <button class="btn danger" onclick="deleteSelected()">🗑️</button>
+        <button class="btn danger" onclick="clearAll()">💥 Clear</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Gesture Panel -->
+  <div id="gesture-panel">
+    <h3>✋ Gestures</h3>
+    <div id="gesture-status">
+      <span class="indicator"></span>
+      <span id="gesture-text">Waiting...</span>
+    </div>
+    <div id="hand-spread">Spread: --</div>
+  </div>
+  
+  <!-- Game Panel -->
+  <div id="game-panel">
+    <h3>🎮 Catch Game</h3>
+    <div class="game-stat">
+      <span class="label">Score</span>
+      <span class="value" id="game-score">0</span>
+    </div>
+    <div class="game-stat">
+      <span class="label">Time</span>
+      <span class="value" id="game-time">30</span>
+    </div>
+    <div class="game-stat">
+      <span class="label">Best</span>
+      <span class="value" id="game-best">0</span>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn game" onclick="startGame()">▶️ Start</button>
+    </div>
+  </div>
+  
+  <!-- Object Count -->
+  <div id="object-count">Objects: 0</div>
+  
+  <!-- Instructions -->
+  <div id="instructions">
+    <strong>Gestures:</strong><br>
+    • Pinch → Drag / Draw<br>
+    • <span class="pink">Open hand → Expand</span><br>
+    • <span class="pink">Close fist → Contract</span><br>
+    • <span class="yellow">Touch targets to score!</span>
+  </div>
+  
+  <!-- Webcam -->
+  <div id="webcam-container">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="canvas-overlay"></canvas>
+    <div id="webcam-label">
+      <span class="dot"></span>
+      Tracking
+    </div>
+  </div>
+
+  <script>
+    // ==================== STATE ====================
+    const state = {
+      mode: 'objects', // objects, particle, draw, game
+      objects: [],
+      selectedObject: null,
+      particles: [],
+      isPinching: false,
+      wasPinching: false,
+      handDetected: false,
+      fingerPos: { x: 0, y: 0 },
+      handSpread: 0, // 0-1 value for how open the hand is
+      lastHandSpread: 0,
+      currentColor: '#ff4466',
+      lastDrawPos: null,
+      // Game state
+      gameActive: false,
+      gameScore: 0,
+      gameBest: 0,
+      gameTime: 30,
+      gameTargets: []
+    };
+    
+    // ==================== COLORS ====================
+    const colors = ['#ff4466', '#ff8844', '#ffcc44', '#44ff88', '#44ddff', '#4488ff', '#aa66ff', '#ff66aa', '#ffffff'];
+    
+    // ==================== DOM ====================
+    const playground = document.getElementById('playground');
+    const particleCanvas = document.getElementById('particle-canvas');
+    const particleCtx = particleCanvas.getContext('2d');
+    const drawCanvas = document.getElementById('draw-canvas');
+    const drawCtx = drawCanvas.getContext('2d');
+    const gestureStatus = document.getElementById('gesture-status');
+    const gestureText = document.getElementById('gesture-text');
+    const handSpreadEl = document.getElementById('hand-spread');
+    const objectCountEl = document.getElementById('object-count');
+    const fingerCursor = document.getElementById('finger-cursor');
+    const permissionOverlay = document.getElementById('permission-overlay');
+    const loadingEl = document.getElementById('loading');
+    const webcamEl = document.getElementById('webcam');
+    const canvasEl = document.getElementById('canvas-overlay');
+    const canvasCtx = canvasEl.getContext('2d');
+    const modeIndicator = document.getElementById('mode-indicator');
+    const gamePanel = document.getElementById('game-panel');
+    const gameScoreEl = document.getElementById('game-score');
+    const gameTimeEl = document.getElementById('game-time');
+    const gameBestEl = document.getElementById('game-best');
+    
+    // ==================== INIT ====================
+    function initColorPicker() {
+      const picker = document.getElementById('color-picker');
+      colors.forEach((color, i) => {
+        const btn = document.createElement('div');
+        btn.className = 'color-btn' + (i === 0 ? ' active' : '');
+        btn.style.backgroundColor = color;
+        btn.onclick = () => {
+          state.currentColor = color;
+          document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          if (state.selectedObject) {
+            state.selectedObject.color = color;
+            state.selectedObject.element.style.backgroundColor = color;
+          }
+        };
+        picker.appendChild(btn);
+      });
+    }
+    
+    // ==================== MODE ====================
+    function setMode(mode) {
+      state.mode = mode;
+      
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('mode-' + mode).classList.add('active');
+      
+      modeIndicator.className = mode;
+      const modeNames = {
+        objects: '🎯 Object Mode',
+        particle: '✨ Particle Mode',
+        draw: '✏️ Draw Mode',
+        game: '🎮 Game Mode'
+      };
+      modeIndicator.textContent = modeNames[mode];
+      
+      gamePanel.classList.toggle('visible', mode === 'game');
+      
+      if (mode === 'particle') {
+        initParticles();
+      }
+      
+      if (mode !== 'game' && state.gameActive) {
+        endGame();
+      }
+    }
+    
+    // ==================== PERMISSIONS ====================
+    async function requestPermissions() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+        });
+        webcamEl.srcObject = stream;
+        await webcamEl.play();
+        permissionOverlay.classList.add('hidden');
+        initializeApp();
+      } catch (e) {
+        alert('Camera access required. Please allow and refresh.');
+      }
+    }
+    
+    // ==================== OBJECTS ====================
+    let objectId = 0;
+    
+    function createObject(type) {
+      const id = ++objectId;
+      const size = 90;
+      const x = window.innerWidth / 2 - size / 2 + (Math.random() - 0.5) * 200;
+      const y = window.innerHeight / 2 - size / 2 + (Math.random() - 0.5) * 200;
+      
+      const el = document.createElement('div');
+      el.className = `playground-object ${type}`;
+      el.style.cssText = `width:${size}px;height:${size}px;left:${x}px;top:${y}px;background-color:${state.currentColor}`;
+      el.innerHTML = type === 'box' ? '▢' : '○';
+      
+      playground.appendChild(el);
+      
+      const obj = { id, type, element: el, x, y, size, color: state.currentColor };
+      el.onmousedown = () => selectObject(obj);
+      
+      state.objects.push(obj);
+      selectObject(obj);
+      updateCount();
+    }
+    
+    function selectObject(obj) {
+      if (state.selectedObject) state.selectedObject.element.classList.remove('selected');
+      state.selectedObject = obj;
+      if (obj) obj.element.classList.add('selected');
+    }
+    
+    function resizeObject(obj, factor) {
+      if (!obj) return;
+      obj.size = Math.max(30, Math.min(400, obj.size * factor));
+      obj.element.style.width = `${obj.size}px`;
+      obj.element.style.height = `${obj.size}px`;
+    }
+    
+    function resizeSelected(factor) {
+      if (state.selectedObject) resizeObject(state.selectedObject, factor);
+    }
+    
+    function deleteSelected() {
+      if (!state.selectedObject) return;
+      state.selectedObject.element.remove();
+      state.objects = state.objects.filter(o => o.id !== state.selectedObject.id);
+      state.selectedObject = null;
+      updateCount();
+    }
+    
+    function clearAll() {
+      state.objects.forEach(o => o.element.remove());
+      state.objects = [];
+      state.selectedObject = null;
+      updateCount();
+      clearDrawing();
+      state.particles = [];
+    }
+    
+    function updateCount() {
+      objectCountEl.textContent = `Objects: ${state.objects.length}`;
+    }
+    
+    function moveObject(obj, x, y) {
+      if (!obj) return;
+      obj.x = Math.max(0, Math.min(window.innerWidth - obj.size, x - obj.size/2));
+      obj.y = Math.max(0, Math.min(window.innerHeight - obj.size, y - obj.size/2));
+      obj.element.style.left = `${obj.x}px`;
+      obj.element.style.top = `${obj.y}px`;
+    }
+    
+    function findObjectAt(x, y) {
+      for (let i = state.objects.length - 1; i >= 0; i--) {
+        const obj = state.objects[i];
+        if (Math.hypot(x - (obj.x + obj.size/2), y - (obj.y + obj.size/2)) < obj.size/2 + 30) {
+          return obj;
+        }
+      }
+      return null;
+    }
+    
+    // ==================== PARTICLES ====================
+    function initParticles() {
+      state.particles = [];
+      const count = 300;
+      for (let i = 0; i < count; i++) {
+        state.particles.push({
+          x: Math.random() * window.innerWidth,
+          y: Math.random() * window.innerHeight,
+          vx: 0,
+          vy: 0,
+          size: 2 + Math.random() * 3,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          baseX: Math.random() * window.innerWidth,
+          baseY: Math.random() * window.innerHeight
+        });
+      }
+    }
+    
+    function updateParticles() {
+      if (state.mode !== 'particle') return;
+      
+      const { fingerPos, handSpread, handDetected } = state;
+      
+      state.particles.forEach(p => {
+        if (handDetected) {
+          const dx = p.x - fingerPos.x;
+          const dy = p.y - fingerPos.y;
+          const dist = Math.hypot(dx, dy);
+          
+          // Hand spread controls attraction/repulsion
+          // spread > 0.6 = expand (repel), spread < 0.4 = contract (attract)
+          const force = (handSpread - 0.5) * 0.5;
+          const maxDist = 300;
+          
+          if (dist < maxDist) {
+            const strength = (1 - dist / maxDist) * force * 8;
+            p.vx += (dx / dist) * strength;
+            p.vy += (dy / dist) * strength;
+          }
+        }
+        
+        // Return to base position slowly
+        p.vx += (p.baseX - p.x) * 0.01;
+        p.vy += (p.baseY - p.y) * 0.01;
+        
+        // Apply velocity with damping
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.95;
+        p.vy *= 0.95;
+        
+        // Bounds
+        if (p.x < 0) { p.x = 0; p.vx *= -0.5; }
+        if (p.x > window.innerWidth) { p.x = window.innerWidth; p.vx *= -0.5; }
+        if (p.y < 0) { p.y = 0; p.vy *= -0.5; }
+        if (p.y > window.innerHeight) { p.y = window.innerHeight; p.vy *= -0.5; }
+      });
+    }
+    
+    function renderParticles() {
+      particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+      
+      if (state.mode !== 'particle') return;
+      
+      state.particles.forEach(p => {
+        particleCtx.beginPath();
+        particleCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        particleCtx.fillStyle = p.color;
+        particleCtx.fill();
+      });
+      
+      // Draw connections
+      particleCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      particleCtx.lineWidth = 1;
+      for (let i = 0; i < state.particles.length; i++) {
+        for (let j = i + 1; j < state.particles.length; j++) {
+          const p1 = state.particles[i];
+          const p2 = state.particles[j];
+          const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+          if (dist < 50) {
+            particleCtx.beginPath();
+            particleCtx.moveTo(p1.x, p1.y);
+            particleCtx.lineTo(p2.x, p2.y);
+            particleCtx.stroke();
+          }
+        }
+      }
+    }
+    
+    // ==================== DRAWING ====================
+    function clearDrawing() {
+      drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    }
+    
+    function draw(x, y) {
+      if (state.mode !== 'draw' || !state.isPinching) return;
+      
+      drawCtx.strokeStyle = state.currentColor;
+      drawCtx.lineWidth = 5;
+      drawCtx.lineCap = 'round';
+      
+      if (state.lastDrawPos) {
+        drawCtx.beginPath();
+        drawCtx.moveTo(state.lastDrawPos.x, state.lastDrawPos.y);
+        drawCtx.lineTo(x, y);
+        drawCtx.stroke();
+      }
+      state.lastDrawPos = { x, y };
+    }
+    
+    // ==================== GAME ====================
+    let gameInterval = null;
+    
+    function startGame() {
+      if (state.gameActive) return;
+      
+      state.gameActive = true;
+      state.gameScore = 0;
+      state.gameTime = 30;
+      gameScoreEl.textContent = '0';
+      gameTimeEl.textContent = '30';
+      
+      // Clear existing targets
+      state.gameTargets.forEach(t => t.element.remove());
+      state.gameTargets = [];
+      
+      // Spawn initial targets
+      for (let i = 0; i < 3; i++) spawnTarget();
+      
+      // Timer
+      gameInterval = setInterval(() => {
+        state.gameTime--;
+        gameTimeEl.textContent = state.gameTime;
+        
+        if (state.gameTime <= 0) {
+          endGame();
+        }
+      }, 1000);
+    }
+    
+    function endGame() {
+      state.gameActive = false;
+      clearInterval(gameInterval);
+      
+      if (state.gameScore > state.gameBest) {
+        state.gameBest = state.gameScore;
+        gameBestEl.textContent = state.gameBest;
+      }
+      
+      state.gameTargets.forEach(t => t.element.remove());
+      state.gameTargets = [];
+    }
+    
+    function spawnTarget() {
+      const size = 50 + Math.random() * 40;
+      const x = 100 + Math.random() * (window.innerWidth - 300);
+      const y = 100 + Math.random() * (window.innerHeight - 300);
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      
+      const el = document.createElement('div');
+      el.className = 'game-target';
+      el.style.cssText = `width:${size}px;height:${size}px;left:${x}px;top:${y}px;background:${color};color:${color}`;
+      el.innerHTML = '🎯';
+      
+      playground.appendChild(el);
+      
+      const target = { element: el, x, y, size };
+      state.gameTargets.push(target);
+      
+      // Auto-remove after some time
+      setTimeout(() => {
+        if (state.gameTargets.includes(target)) {
+          el.remove();
+          state.gameTargets = state.gameTargets.filter(t => t !== target);
+          if (state.gameActive) spawnTarget();
+        }
+      }, 3000 + Math.random() * 2000);
+    }
+    
+    function checkTargetHit(x, y) {
+      if (!state.gameActive || state.mode !== 'game') return;
+      
+      for (let i = state.gameTargets.length - 1; i >= 0; i--) {
+        const t = state.gameTargets[i];
+        const dist = Math.hypot(x - (t.x + t.size/2), y - (t.y + t.size/2));
+        
+        if (dist < t.size/2 + 20) {
+          // Hit!
+          state.gameScore += Math.round(100 - t.size);
+          gameScoreEl.textContent = state.gameScore;
+          
+          t.element.classList.add('hit');
+          setTimeout(() => t.element.remove(), 300);
+          
+          state.gameTargets.splice(i, 1);
+          
+          // Spawn new target
+          setTimeout(spawnTarget, 200);
+          
+          return;
+        }
+      }
+    }
+    
+    // ==================== HAND TRACKING ====================
+    let hands = null;
+    
+    function initHandTracking() {
+      loadingEl.classList.remove('hidden');
+      
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.65,
+        minTrackingConfidence: 0.5
+      });
+      
+      hands.onResults(onHandResults);
+      
+      const camera = new Camera(webcamEl, {
+        onFrame: async () => {
+          if (hands) await hands.send({ image: webcamEl });
+        },
+        width: 640,
+        height: 480
+      });
+      
+      camera.start().then(() => loadingEl.classList.add('hidden'));
+    }
+    
+    function calculateHandSpread(landmarks) {
+      // Calculate average distance from palm center to fingertips
+      const palmCenter = landmarks[0]; // Wrist
+      const fingertips = [landmarks[4], landmarks[8], landmarks[12], landmarks[16], landmarks[20]];
+      
+      let totalDist = 0;
+      fingertips.forEach(tip => {
+        totalDist += Math.hypot(tip.x - palmCenter.x, tip.y - palmCenter.y);
+      });
+      
+      const avgDist = totalDist / 5;
+      // Normalize to 0-1 range (roughly 0.15 closed, 0.4 open)
+      return Math.min(1, Math.max(0, (avgDist - 0.12) / 0.25));
+    }
+    
+    function onHandResults(results) {
+      canvasEl.width = webcamEl.videoWidth || 640;
+      canvasEl.height = webcamEl.videoHeight || 480;
+      
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+        
+        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00ffff', lineWidth: 2 });
+        drawLandmarks(canvasCtx, landmarks, { color: '#ff00ff', lineWidth: 1, radius: 3 });
+        
+        const indexTip = landmarks[8];
+        const thumbTip = landmarks[4];
+        
+        const screenX = (1 - indexTip.x) * window.innerWidth;
+        const screenY = indexTip.y * window.innerHeight;
+        
+        state.fingerPos = { x: screenX, y: screenY };
+        state.handDetected = true;
+        
+        // Hand spread calculation
+        state.lastHandSpread = state.handSpread;
+        state.handSpread = calculateHandSpread(landmarks);
+        handSpreadEl.textContent = `Spread: ${Math.round(state.handSpread * 100)}%`;
+        
+        // Pinch detection
+        const pinchDist = Math.hypot(
+          (thumbTip.x - indexTip.x) * window.innerWidth,
+          (thumbTip.y - indexTip.y) * window.innerHeight
+        );
+        
+        state.wasPinching = state.isPinching;
+        state.isPinching = pinchDist < 45;
+        
+        if (state.isPinching && !state.wasPinching) state.lastDrawPos = null;
+        if (!state.isPinching) state.lastDrawPos = null;
+        
+        // Update cursor
+        fingerCursor.classList.add('active');
+        fingerCursor.style.left = `${screenX}px`;
+        fingerCursor.style.top = `${screenY}px`;
+        
+        // Gesture-based object resizing (in object mode)
+        if (state.mode === 'objects' && state.selectedObject) {
+          const spreadDelta = state.handSpread - state.lastHandSpread;
+          if (Math.abs(spreadDelta) > 0.02) {
+            const factor = 1 + spreadDelta * 0.5;
+            resizeObject(state.selectedObject, factor);
+          }
+        }
+        
+        // Mode-specific behavior
+        if (state.handSpread > 0.7) {
+          gestureStatus.className = 'spread';
+          gestureText.textContent = 'Open - Expand';
+          fingerCursor.className = 'active spread';
+        } else if (state.isPinching) {
+          gestureStatus.className = 'pinching';
+          gestureText.textContent = 'Pinch - Drag/Draw';
+          fingerCursor.className = 'active pinching';
+        } else {
+          gestureStatus.className = 'active';
+          gestureText.textContent = 'Hand detected';
+          fingerCursor.className = 'active';
+        }
+        
+        // Handle interactions based on mode
+        handleInteraction(screenX, screenY);
+        
+      } else {
+        state.handDetected = false;
+        state.isPinching = false;
+        state.lastDrawPos = null;
+        gestureStatus.className = '';
+        gestureText.textContent = 'No hand';
+        handSpreadEl.textContent = 'Spread: --';
+        fingerCursor.classList.remove('active', 'pinching', 'spread');
+      }
+      
+      canvasCtx.restore();
+    }
+    
+    function handleInteraction(x, y) {
+      switch (state.mode) {
+        case 'objects':
+          if (state.isPinching) {
+            if (state.selectedObject) {
+              moveObject(state.selectedObject, x, y);
+            } else {
+              const obj = findObjectAt(x, y);
+              if (obj) {
+                selectObject(obj);
+                moveObject(obj, x, y);
+              }
+            }
+          } else {
+            const obj = findObjectAt(x, y);
+            if (obj) selectObject(obj);
+          }
+          break;
+          
+        case 'draw':
+          draw(x, y);
+          break;
+          
+        case 'game':
+          if (state.isPinching) {
+            checkTargetHit(x, y);
+          }
+          break;
+          
+        case 'particle':
+          // Particles handled in update loop
+          break;
+      }
+    }
+    
+    // ==================== ANIMATION LOOP ====================
+    function animate() {
+      updateParticles();
+      renderParticles();
+      requestAnimationFrame(animate);
+    }
+    
+    // ==================== INIT APP ====================
+    function initializeApp() {
+      particleCanvas.width = window.innerWidth;
+      particleCanvas.height = window.innerHeight;
+      drawCanvas.width = window.innerWidth;
+      drawCanvas.height = window.innerHeight;
+      canvasEl.width = 640;
+      canvasEl.height = 480;
+      
+      initColorPicker();
+      initHandTracking();
+      animate();
+      
+      window.addEventListener('resize', () => {
+        particleCanvas.width = window.innerWidth;
+        particleCanvas.height = window.innerHeight;
+        drawCanvas.width = window.innerWidth;
+        drawCanvas.height = window.innerHeight;
+      });
+      
+      playground.addEventListener('mousedown', (e) => {
+        if (e.target === playground && state.selectedObject) {
+          state.selectedObject.element.classList.remove('selected');
+          state.selectedObject = null;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
