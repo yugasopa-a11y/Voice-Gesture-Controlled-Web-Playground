@@ -10,6 +10,13 @@ This project explores next-generation human-computer interaction where:
 
 ---
 
+## 🌐 Play Online
+
+👉 **Launch the app:**
+[CLICK HERE](https://voice-gesture-playground.designarena.ai)
+
+---
+
 ## 🚀 Features
 
 * 🎤 **Voice Control (Web Speech API)**
@@ -46,16 +53,16 @@ This project explores next-generation human-computer interaction where:
 
 ## 🛠️ How to Use
 
-1. Open the HTML file in your browser
+1. Open the website
 2. Allow:
 
    * Microphone access 🎤
    * Camera access 📷
 3. Try commands like:
 
-   * `"create box"`
-   * `"change color to red"`
-   * `"make it bigger"`
+   * "create box"
+   * "change color to red"
+   * "make it bigger"
 4. Use your hand to:
 
    * Move objects
@@ -67,7 +74,7 @@ This project explores next-generation human-computer interaction where:
 
 ```
 /project
- └── index.html  (entire app in one file)
+ └── index.html
 ```
 
 ---
@@ -75,8 +82,6 @@ This project explores next-generation human-computer interaction where:
 ## 🤖 Built With AI
 
 This project was generated using an AI-assisted development workflow.
-
-The following prompt was used to generate the application:
 
 ---
 
@@ -276,9 +281,9 @@ If any of that fails, the task is NOT complete.
 
 ## ⚠️ Notes
 
-* Works best in **Chrome-based browsers**
+* Works best in Chrome-based browsers
 * Requires HTTPS or localhost for microphone/camera permissions
-* Performance depends on your device’s camera and CPU
+* Performance depends on your device
 
 ---
 
@@ -287,17 +292,12 @@ If any of that fails, the task is NOT complete.
 * Physics system
 * Particle effects
 * Multi-hand tracking
-* AI-powered command interpretation
-* Save/load scenes
-
----
-
-## 🧪 Status
-
-🚧 Experimental — built for exploration, not production
+* AI-powered commands
 
 ---
 
 ## 📜 License
 
-* Currently has no license, feel free to use!
+This project currently has **no license**.
+
+All rights are reserved by the author. You may view the code, but you may not copy, modify, distribute, or use it in other projects without explicit permission.
